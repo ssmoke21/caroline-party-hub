@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#059669" />
+<title>Caroline's 2nd Birthday — Party Hub</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ---------- persistence via localStorage (works anywhere: local file or GitHub Pages) ----------
+const STORE_KEY = "caroline-party";
+const LEGACY_KEYS = ["caroline-party-plan-v2", "caroline-party-plan-v1"];
+function loadAny() {
+  for (const k of [STORE_KEY, ...LEGACY_KEYS]) {
+    try { const v = localStorage.getItem(k); if (v) return JSON.parse(v); } catch (e) {}
+  }
+  return null;
+}
+function saveState(obj) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); return true; } catch (e) { return false; }
+}
+
+const uid = () => "u" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const PACK = { water: 40, beer: 24, seltzerA: 24, naSeltzer: 24, soda: 24, juice: 40, snacks: 30 };
+
+const TYPES = [
+  { v: "HAVE", label: "Our own" },
+  { v: "BUY", label: "Buy" },
+  { v: "BORROW", label: "Someone brings" },
+  { v: "RENT", label: "Rent" },
+];
+const TYPE_LABEL = { HAVE: "our own", BUY: "buy", BORROW: "brings", RENT: "rent" };
+const needsPerson = (t) => t === "BORROW" || t === "RENT";
+
+const GROUP_ORDER = ["Tables & Seating", "Coolers & Ice", "Power & Shade", "Drinks", "Food", "Serving", "Decorations", "Games & Water Play", "Comfort & Misc"];
+const DAYS = ["Sun · Jul 5", "Mon · Jul 6", "Tue · Jul 7", "Wed · Jul 8", "Thu · Jul 9", "Fri · Jul 10", "Sat · Jul 11", "Sun · Jul 12 (AM)"];
+
+const sup = (group, label, need, sources, extra = {}) => ({ id: uid(), group, label, need, sources, done: false, ...extra });
+const src = (type, qty, person = "") => ({ type, qty, person });
+
+const DEFAULTS = {
+  guests: 65, adultPct: 80, drinkPct: 60, buffer: 10,
+  waterRate: 1.75, drinksPer: 2.5, beerShare: 50, naRate: 0.4, sodaRate: 0.3, juiceRate: 2.5, snackRate: 1.25,
+  tab: "overview",
+  supplies: [
+    sup("Tables & Seating", "Seating tables", 3, [src("RENT", 3, "Rental company")]),
+    sup("Tables & Seating", "Food tables", 2, [src("HAVE", 1), src("BORROW", 1, "")]),
+    sup("Tables & Seating", "Folding chairs", 30, [src("RENT", 30, "Rental company")]),
+    sup("Tables & Seating", "Blanket for presents", 1, [src("HAVE", 1)]),
+    sup("Coolers & Ice", "Cooler — water", 1, [src("HAVE", 1)]),
+    sup("Coolers & Ice", "Cooler — beer/seltzer", 1, [src("BORROW", 1, "Pop")]),
+    sup("Coolers & Ice", "Cooler — non-alcoholic", 1, [src("BORROW", 1, "Stephen")]),
+    sup("Coolers & Ice", "Ice (bags, day-of)", 7, [src("BUY", 7)]),
+    sup("Power & Shade", "Extension cords", 2, [src("RENT", 2, "Rental company")]),
+    sup("Power & Shade", "Tents", 4, [src("HAVE", 1), src("BORROW", 1, "Dan"), src("BORROW", 1, "Pop"), src("BORROW", 1, "Chris")]),
+    sup("Power & Shade", "Misting fans", 2, [src("HAVE", 2)]),
+    sup("Drinks", "Water", 0, [], { qtyKey: "water" }),
+    sup("Drinks", "Beer", 0, [], { qtyKey: "beer" }),
+    sup("Drinks", "Hard seltzer", 0, [], { qtyKey: "seltzerA" }),
+    sup("Drinks", "Non-alcoholic seltzer", 0, [], { qtyKey: "naSeltzer" }),
+    sup("Drinks", "Soda", 0, [], { qtyKey: "soda" }),
+    sup("Drinks", "Juice boxes", 0, [], { qtyKey: "juice" }),
+    sup("Food", "Slider patties + buns", 1, [src("BUY", 1)]),
+    sup("Food", "Uncrustables (kids)", 1, [src("BUY", 1)]),
+    sup("Food", "Sides — salad, fruit, veggies", 1, [src("BUY", 1)]),
+    sup("Food", "Watermelon", 2, [src("BUY", 2)]),
+    sup("Food", "Snack bags", 0, [], { qtyKey: "snacks" }),
+    sup("Food", "Costco cakes", 2, [src("BUY", 2)]),
+    sup("Food", "Ice pops", 1, [src("BORROW", 1, "Mom Smoke")]),
+    sup("Serving", "Plates", 150, [src("BUY", 150)]),
+    sup("Serving", "Napkins", 200, [src("BUY", 200)]),
+    sup("Serving", "Utensils", 200, [src("BUY", 200)]),
+    sup("Serving", "Serving spoons", 4, [src("BUY", 4)]),
+    sup("Serving", "Serving dishes", 1, [src("HAVE", 1)]),
+    sup("Serving", "Cake cutting supplies", 1, [src("HAVE", 1)]),
+    sup("Decorations", "Birthday banner", 1, [src("BUY", 1)]),
+    sup("Decorations", "Balloons", 1, [src("BUY", 1)]),
+    sup("Decorations", "Tablecloths", 5, [src("BUY", 5)]),
+    sup("Decorations", "Photo prints of Caroline", 1, [src("BUY", 1)]),
+    sup("Decorations", "Cake topper", 1, [src("BUY", 1)]),
+    sup("Games & Water Play", "Speaker + music", 1, [src("BORROW", 1, "Scoot")]),
+    sup("Games & Water Play", "Cornhole", 1, [src("HAVE", 1)]),
+    sup("Games & Water Play", "Bottle bash", 1, [src("BORROW", 1, "Chris")]),
+    sup("Games & Water Play", "Whiffle ball", 1, [src("BORROW", 1, "Joey/Pat")]),
+    sup("Games & Water Play", "Bubble machine", 1, [src("HAVE", 1)]),
+    sup("Games & Water Play", "Sprinklers", 2, [src("HAVE", 2)]),
+    sup("Games & Water Play", "Baby pool", 1, [src("HAVE", 1)]),
+    sup("Games & Water Play", "Ball pit + blanket", 1, [src("HAVE", 1)]),
+    sup("Games & Water Play", "Outdoor toys (balls, frisbees)", 1, [src("HAVE", 1)]),
+    sup("Games & Water Play", "Toddler pen", 1, []),
+    sup("Comfort & Misc", "Sunscreen", 2, [src("BUY", 2)]),
+    sup("Comfort & Misc", "Wipes", 2, [src("BUY", 2)]),
+    sup("Comfort & Misc", "Towels", 1, [src("HAVE", 1)]),
+    sup("Comfort & Misc", "Paper towels + toilet paper", 1, [src("BUY", 1)]),
+    sup("Comfort & Misc", "Water stations + jugs", 2, []),
+    sup("Comfort & Misc", "Alcohol permit", 1, []),
+  ],
+  tasks: [
+    { id: uid(), day: "Sun · Jul 5", label: "Weed bricks", done: false },
+    { id: uid(), day: "Mon · Jul 6", label: "Lock final headcount", done: false },
+    { id: uid(), day: "Mon · Jul 6", label: "Confirm rental (tables, chairs, cords)", done: false },
+    { id: uid(), day: "Mon · Jul 6", label: "Text everyone lending gear to confirm", done: false },
+    { id: uid(), day: "Tue · Jul 7", label: "Order 2 Costco cakes", done: false },
+    { id: uid(), day: "Tue · Jul 7", label: "Print Caroline's photos", done: false },
+    { id: uid(), day: "Tue · Jul 7", label: "Sort out alcohol permit if needed", done: false },
+    { id: uid(), day: "Wed · Jul 8", label: "Pick up gear from Chris", done: false },
+    { id: uid(), day: "Thu · Jul 9", label: "Go / no-go weather check", done: false },
+    { id: uid(), day: "Thu · Jul 9", label: "Text parents: bathing suits + towels", done: false },
+    { id: uid(), day: "Thu · Jul 9", label: "Buy non-perishables (paper, snacks, decor)", done: false },
+    { id: uid(), day: "Fri · Jul 10", label: "Costco run — food + drinks", done: false },
+    { id: uid(), day: "Fri · Jul 10", label: "Pick up alcohol", done: false },
+    { id: uid(), day: "Fri · Jul 10", label: "Charge speaker + bubble machine", done: false },
+    { id: uid(), day: "Sat · Jul 11", label: "Cut grass", done: false },
+    { id: uid(), day: "Sat · Jul 11", label: "Clean sports equipment", done: false },
+    { id: uid(), day: "Sat · Jul 11", label: "Clean house + fridge", done: false },
+    { id: uid(), day: "Sat · Jul 11", label: "Pre-stage coolers, tents, toys", done: false },
+    { id: uid(), day: "Sun · Jul 12 (AM)", label: "Pick up cakes", done: false },
+    { id: uid(), day: "Sun · Jul 12 (AM)", label: "Get ice (6–8 bags)", done: false },
+    { id: uid(), day: "Sun · Jul 12 (AM)", label: "Drop Dottie at Nana/Pop's", done: false },
+    { id: uid(), day: "Sun · Jul 12 (AM)", label: "Set up tables, tents, water play, fans", done: false },
+    { id: uid(), day: "Sun · Jul 12 (AM)", label: "Ice drinks by ~12:30", done: false },
+  ],
+};
+
+function Stepper({ label, value, onChange, min = 0, max = 500, step = 1, small }) {
+  return (
+    <div className={`flex items-center justify-between gap-3 ${small ? "py-1" : "py-2"}`}>
+      {label && <span className="text-sm text-slate-700">{label}</span>}
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => onChange(Math.max(min, +(value - step).toFixed(2)))} className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 active:bg-slate-200">–</button>
+        <span className="w-10 text-center font-semibold text-slate-900 tabular-nums">{value}</span>
+        <button onClick={() => onChange(Math.min(max, +(value + step).toFixed(2)))} className="w-8 h-8 rounded-full bg-emerald-600 text-white active:bg-emerald-700">+</button>
+      </div>
+    </div>
+  );
+}
+function Slider({ label, value, onChange, min, max, step, display }) {
+  return (
+    <div className="py-2">
+      <div className="flex justify-between text-sm text-slate-700 mb-1"><span>{label}</span><span className="font-semibold text-slate-900">{display}</span></div>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-emerald-600" />
+    </div>
+  );
+}
+function Card({ children, className = "" }) {
+  return <section className={`bg-white rounded-2xl shadow-sm border border-slate-100 ${className}`}>{children}</section>;
+}
+function Check({ done, onToggle }) {
+  return <button onClick={onToggle} className={`w-6 h-6 rounded-md border flex items-center justify-center shrink-0 ${done ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 text-transparent"}`}>✓</button>;
+}
+const allocated = (item) => (item.sources || []).reduce((a, s) => a + (Number(s.qty) || 0), 0);
+
+function PartyHub() {
+  const [S, setS] = useState(() => { const saved = loadAny(); return saved ? { ...DEFAULTS, ...saved } : DEFAULTS; });
+  const [filter, setFilter] = useState("all");
+  const [expanded, setExpanded] = useState({});
+  const [saveStatus, setSaveStatus] = useState("saved");
+  const [showBackup, setShowBackup] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  const exportRef = useRef(null);
+
+  useEffect(() => { setSaveStatus(saveState(S) ? "saved" : "error"); }, [S]);
+
+  const set = (k, v) => setS((p) => ({ ...p, [k]: v }));
+  const toggleExp = (id) => setExpanded((p) => ({ ...p, [id]: !p[id] }));
+
+  const editSupply = (id, updater) => setS((p) => ({ ...p, supplies: p.supplies.map((it) => (it.id === id ? updater(it) : it)) }));
+  const setSupplyField = (id, field, val) => editSupply(id, (it) => ({ ...it, [field]: val }));
+  const setSource = (id, idx, field, val) => editSupply(id, (it) => ({ ...it, sources: it.sources.map((s, i) => (i === idx ? { ...s, [field]: val } : s)) }));
+  const addSource = (id) => editSupply(id, (it) => ({ ...it, sources: [...it.sources, src("BUY", Math.max(0, it.need - allocated(it)) || 1)] }));
+  const removeSource = (id, idx) => editSupply(id, (it) => ({ ...it, sources: it.sources.filter((_, i) => i !== idx) }));
+  const removeSupply = (id) => setS((p) => ({ ...p, supplies: p.supplies.filter((it) => it.id !== id) }));
+  const addSupply = (group) => {
+    const item = sup(group, "New item", 1, [src("BUY", 1)]);
+    setS((p) => ({ ...p, supplies: [...p.supplies, item] }));
+    setExpanded((p) => ({ ...p, [item.id]: true }));
+  };
+
+  const editTask = (id, field, val) => setS((p) => ({ ...p, tasks: p.tasks.map((t) => (t.id === id ? { ...t, [field]: val } : t)) }));
+  const removeTask = (id) => setS((p) => ({ ...p, tasks: p.tasks.filter((t) => t.id !== id) }));
+  const addTask = (day) => {
+    const t = { id: uid(), day, label: "New task", done: false };
+    setS((p) => ({ ...p, tasks: [...p.tasks, t] }));
+    setExpanded((p) => ({ ...p, [t.id]: true }));
+  };
+
+  const r = useMemo(() => {
+    const bf = 1 + S.buffer / 100;
+    const adults = Math.round(S.guests * (S.adultPct / 100));
+    const kids = S.guests - adults;
+    const alcohol = adults * (S.drinkPct / 100) * S.drinksPer * bf;
+    const need = {
+      water: S.guests * S.waterRate * bf,
+      beer: alcohol * (S.beerShare / 100),
+      seltzerA: alcohol * (1 - S.beerShare / 100),
+      naSeltzer: S.guests * S.naRate * bf,
+      soda: S.guests * S.sodaRate * bf,
+      juice: kids * S.juiceRate * bf,
+      snacks: S.guests * S.snackRate * bf,
+    };
+    const cases = {};
+    Object.keys(PACK).forEach((k) => (cases[k] = Math.ceil(need[k] / PACK[k])));
+    return { adults, kids, need, cases };
+  }, [S]);
+
+  const buyLabel = (key) => {
+    const n = r.cases[key];
+    const w = { water: "cases", beer: "cases", seltzerA: "packs", naSeltzer: "cases", soda: "case", juice: "case", snacks: "boxes" }[key];
+    return `${n} ${w}${n !== 1 && !w.endsWith("s") ? "s" : ""} (${n * PACK[key]})`;
+  };
+
+  const byPerson = useMemo(() => {
+    const map = {};
+    S.supplies.forEach((it) => {
+      (it.sources || []).forEach((s) => {
+        if (needsPerson(s.type) && s.person && s.person.trim()) {
+          const key = s.person.trim();
+          if (!map[key]) map[key] = [];
+          map[key].push({ label: it.label, qty: s.qty, type: s.type });
+        }
+      });
+    });
+    return map;
+  }, [S.supplies]);
+
+  const matchFilter = (it) => {
+    if (filter === "all") return true;
+    if (filter === "OPEN") return !it.qtyKey && allocated(it) < it.need;
+    if (it.qtyKey) return filter === "BUY";
+    return (it.sources || []).some((s) => s.type === filter);
+  };
+
+  const doCopy = async () => {
+    const text = exportRef.current ? exportRef.current.value : "";
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true); setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      if (exportRef.current) {
+        exportRef.current.focus(); exportRef.current.select();
+        try { document.execCommand("copy"); } catch (e2) {}
+        setCopied(true); setTimeout(() => setCopied(false), 1500);
+      }
+    }
+  };
+  const doImport = () => {
+    try {
+      const parsed = JSON.parse(importText);
+      if (!parsed || typeof parsed !== "object") throw new Error("bad");
+      setS((p) => ({ ...DEFAULTS, ...parsed }));
+      setImportMsg("Plan restored."); setImportText("");
+      setTimeout(() => setImportMsg(""), 2500);
+    } catch (e) {
+      setImportMsg("That didn't look like a saved plan — check you pasted the whole thing.");
+    }
+  };
+
+  const TABS = [["overview", "Overview"], ["supplies", "Supplies"], ["people", "People"], ["schedule", "Timeline"]];
+
+  return (
+    <div className="min-h-screen bg-stone-50 text-slate-800">
+      <div className="max-w-xl mx-auto px-4 pb-16">
+        <header className="pt-6 pb-3">
+          <div className="text-xs uppercase tracking-widest text-emerald-700 font-semibold">Party Hub</div>
+          <h1 className="text-2xl font-bold text-slate-900 mt-1">Caroline's 2nd Birthday</h1>
+          <p className="text-sm text-slate-500">Sun, July 12 · 2:00 PM · Milltown, NJ park</p>
+        </header>
+
+        <div className="sticky top-0 z-10 bg-stone-50 pt-1 pb-2">
+          <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-slate-100">
+            {TABS.map(([id, label]) => (
+              <button key={id} onClick={() => set("tab", id)} className={`flex-1 text-sm py-2 rounded-lg font-medium ${S.tab === id ? "bg-emerald-600 text-white" : "text-slate-600"}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {S.tab === "overview" && (
+          <div className="space-y-4 mt-2">
+            <Card className="p-4 bg-sky-50 border-sky-100">
+              <div className="flex items-center justify-between"><h2 className="font-semibold text-slate-900">Weather outlook</h2><span className="text-xs text-slate-400">as of Jul 3</span></div>
+              <p className="text-sm text-slate-700 leading-relaxed mt-1">NJ is heading into a hot stretch — highs near 100°F midweek — easing to the upper 80s–low 90s by the 12th, with a chance of afternoon thunderstorms developing. Plan for hot plus a pop-up storm risk: shade, fans, water play, pavilion as rain backup. Recheck Thursday 7/9 for the go/no-go.</p>
+            </Card>
+            <Card className="p-4">
+              <h2 className="font-semibold text-slate-900 mb-1">Who's coming</h2>
+              <p className="text-xs text-slate-500 mb-2">Drink & snack amounts recalculate from these.</p>
+              <Stepper label="Total guests" value={S.guests} onChange={(v) => set("guests", v)} min={10} max={120} />
+              <Slider label="Adults vs. kids" value={S.adultPct} onChange={(v) => set("adultPct", v)} min={40} max={95} step={5} display={`${r.adults} adults · ${r.kids} kids`} />
+              <Slider label="Adults who drink alcohol" value={S.drinkPct} onChange={(v) => set("drinkPct", v)} min={0} max={100} step={5} display={`${S.drinkPct}%`} />
+              <Slider label="Leftover cushion" value={S.buffer} onChange={(v) => set("buffer", v)} min={0} max={30} step={5} display={`+${S.buffer}%`} />
+            </Card>
+            <Card className="overflow-hidden">
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between"><h2 className="font-semibold text-slate-900">Drinks & snacks to buy</h2><span className="text-xs text-slate-400">live</span></div>
+              {[["Water", Math.round(r.need.water), "bottles", buyLabel("water")], ["Beer", Math.round(r.need.beer), "cans", buyLabel("beer")], ["Hard seltzer", Math.round(r.need.seltzerA), "cans", buyLabel("seltzerA")], ["Non-alc. seltzer", Math.round(r.need.naSeltzer), "cans", buyLabel("naSeltzer")], ["Soda", Math.round(r.need.soda), "cans", buyLabel("soda")], ["Juice boxes", Math.round(r.need.juice), "boxes", buyLabel("juice")], ["Snack bags", Math.round(r.need.snacks), "bags", buyLabel("snacks")], ["Cake", S.guests, "servings", "2 Costco cakes (~96)"]].map(([name, need, unit, buy]) => (
+                <div key={name} className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                  <div><div className="font-medium text-slate-900">{name}</div><div className="text-xs text-slate-500">Need: {need} {unit}</div></div>
+                  <div className="font-semibold text-emerald-700 text-sm text-right">{buy}</div>
+                </div>
+              ))}
+            </Card>
+            <Card className="p-4">
+              <h2 className="font-semibold text-slate-900 mb-1">Fine-tune assumptions</h2>
+              <p className="text-xs text-slate-500 mb-2">Leaner than last year on purpose.</p>
+              <Stepper label="Water per person" value={S.waterRate} onChange={(v) => set("waterRate", v)} min={0.5} max={4} step={0.25} />
+              <Stepper label="Drinks per drinker" value={S.drinksPer} onChange={(v) => set("drinksPer", v)} min={0.5} max={5} step={0.5} />
+              <Slider label="Share that's beer" value={S.beerShare} onChange={(v) => set("beerShare", v)} min={0} max={100} step={10} display={`${S.beerShare}% beer`} />
+              <Stepper label="NA seltzer per person" value={S.naRate} onChange={(v) => set("naRate", v)} min={0} max={2} step={0.1} />
+              <Stepper label="Soda per person" value={S.sodaRate} onChange={(v) => set("sodaRate", v)} min={0} max={2} step={0.1} />
+              <Stepper label="Juice per kid" value={S.juiceRate} onChange={(v) => set("juiceRate", v)} min={0.5} max={5} step={0.5} />
+              <Stepper label="Snack bags per person" value={S.snackRate} onChange={(v) => set("snackRate", v)} min={0.5} max={4} step={0.25} />
+            </Card>
+          </div>
+        )}
+
+        {S.tab === "supplies" && (
+          <div className="mt-2 space-y-3">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {[["all", "All"], ["BUY", "To buy"], ["BORROW", "Someone brings"], ["RENT", "Rent"], ["OPEN", "Not sorted"]].map(([f, lbl]) => (
+                <button key={f} onClick={() => setFilter(f)} className={`text-sm px-3 py-1.5 rounded-full whitespace-nowrap font-medium ${filter === f ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"}`}>{lbl}</button>
+              ))}
+            </div>
+            {GROUP_ORDER.map((g) => {
+              const items = S.supplies.filter((it) => it.group === g && matchFilter(it));
+              if (items.length === 0) return null;
+              return (
+                <Card key={g} className="overflow-hidden">
+                  <div className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{g}</div>
+                  {items.map((it) => {
+                    const alloc = allocated(it);
+                    const short = it.need - alloc;
+                    const isOpen = expanded[it.id];
+                    return (
+                      <div key={it.id} className="border-t border-slate-100">
+                        <div className="flex items-center gap-3 px-4 py-2.5">
+                          <Check done={!!it.done} onToggle={() => setSupplyField(it.id, "done", !it.done)} />
+                          <div className="flex-1 min-w-0" onClick={() => !it.qtyKey && toggleExp(it.id)}>
+                            <div className={`text-sm ${it.done ? "line-through text-slate-400" : "text-slate-900"}`}>{it.label}</div>
+                            {it.qtyKey ? (
+                              <div className="text-xs text-emerald-700 font-semibold">{buyLabel(it.qtyKey)}</div>
+                            ) : (
+                              <div className="text-xs text-slate-500">Need {it.need} · {it.sources.length === 0 ? "not sorted yet" : it.sources.map((s, i) => (<span key={i}>{i > 0 ? " · " : ""}{s.qty} {TYPE_LABEL[s.type]}{s.person ? ` (${s.person})` : ""}</span>))}</div>
+                            )}
+                          </div>
+                          {!it.qtyKey && (<span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${short > 0 ? "bg-amber-100 text-amber-700" : short < 0 ? "bg-slate-100 text-slate-500" : "bg-emerald-100 text-emerald-700"}`}>{short > 0 ? `${short} to sort` : short < 0 ? `+${-short}` : "set"}</span>)}
+                        </div>
+                        {isOpen && !it.qtyKey && (
+                          <div className="px-4 pb-4 bg-slate-50">
+                            <label className="text-xs text-slate-500">Item name</label>
+                            <input value={it.label} onChange={(e) => setSupplyField(it.id, "label", e.target.value)} className="w-full text-sm rounded-lg px-2 py-1.5 border border-slate-200 mb-2 mt-0.5" />
+                            <Stepper label="How many needed" value={it.need} onChange={(v) => setSupplyField(it.id, "need", v)} min={0} max={500} />
+                            <div className="text-xs text-slate-500 mt-2 mb-1">Where they come from</div>
+                            <div className="space-y-2">
+                              {it.sources.map((s, idx) => (
+                                <div key={idx} className="bg-white rounded-lg border border-slate-200 p-2">
+                                  <div className="flex items-center gap-2">
+                                    <select value={s.type} onChange={(e) => setSource(it.id, idx, "type", e.target.value)} className="text-sm rounded-md border border-slate-200 px-2 py-1.5 bg-white">
+                                      {TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                                    </select>
+                                    <Stepper value={s.qty} onChange={(v) => setSource(it.id, idx, "qty", v)} min={0} max={500} small />
+                                    <button onClick={() => removeSource(it.id, idx)} className="ml-auto w-8 h-8 rounded-full text-slate-400 hover:text-red-500">×</button>
+                                  </div>
+                                  {needsPerson(s.type) && (<input value={s.person} placeholder={s.type === "RENT" ? "vendor…" : "who's bringing it…"} onChange={(e) => setSource(it.id, idx, "person", e.target.value)} className="mt-2 w-full text-sm rounded-md px-2 py-1.5 border border-sky-200 bg-sky-50" />)}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center justify-between mt-2">
+                              <button onClick={() => addSource(it.id)} className="text-sm text-emerald-700 font-medium">+ Add a source</button>
+                              <span className={`text-xs ${short === 0 ? "text-emerald-700" : "text-amber-600"}`}>{alloc} of {it.need} covered</span>
+                            </div>
+                            <div className="flex justify-between mt-3">
+                              <button onClick={() => removeSupply(it.id)} className="text-xs text-red-500">Delete item</button>
+                              <button onClick={() => toggleExp(it.id)} className="text-xs text-slate-500">Done</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {filter === "all" && (<button onClick={() => addSupply(g)} className="w-full text-sm text-emerald-700 font-medium py-2.5 border-t border-slate-100">+ Add item</button>)}
+                </Card>
+              );
+            })}
+            <p className="text-xs text-slate-400 px-1">Tap any item to change how many you need and split it across our own / buy / borrow / rent — and assign who's bringing each part right there.</p>
+          </div>
+        )}
+
+        {S.tab === "people" && (
+          <div className="mt-2 space-y-3">
+            <p className="text-xs text-slate-500 px-1">Built from your Supplies assignments. Assign people over in Supplies and they show up here, grouped so you know what to ask each person for.</p>
+            {Object.keys(byPerson).length === 0 && (<Card className="p-4 text-sm text-slate-500">No one assigned yet. In Supplies, set an item's source to “Someone brings” or “Rent” and add a name.</Card>)}
+            {Object.keys(byPerson).sort().map((person) => (
+              <Card key={person} className="overflow-hidden">
+                <div className="px-4 pt-3 pb-2 font-semibold text-slate-900 flex items-center justify-between"><span>{person}</span><span className="text-xs font-normal text-slate-400">{byPerson[person].length} item{byPerson[person].length > 1 ? "s" : ""}</span></div>
+                {byPerson[person].map((x, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-sm"><span className="text-slate-800">{x.label}</span><span className="text-slate-500 tabular-nums">×{x.qty}{x.type === "RENT" ? " (rental)" : ""}</span></div>
+                ))}
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {S.tab === "schedule" && (
+          <div className="mt-2 space-y-3">
+            {DAYS.map((day) => {
+              const dayTasks = S.tasks.filter((t) => t.day === day);
+              return (
+                <Card key={day} className="overflow-hidden">
+                  <div className="px-4 pt-3 pb-1 text-sm font-semibold text-slate-900">{day}</div>
+                  {dayTasks.map((t) => (
+                    <div key={t.id} className="border-t border-slate-100">
+                      <div className="flex items-center gap-3 px-4 py-2.5">
+                        <Check done={t.done} onToggle={() => editTask(t.id, "done", !t.done)} />
+                        <span className={`text-sm flex-1 ${t.done ? "line-through text-slate-400" : "text-slate-900"}`} onClick={() => toggleExp(t.id)}>{t.label}</span>
+                        <button onClick={() => toggleExp(t.id)} className="text-xs text-slate-400">edit</button>
+                      </div>
+                      {expanded[t.id] && (
+                        <div className="px-4 pb-3 bg-slate-50">
+                          <input value={t.label} onChange={(e) => editTask(t.id, "label", e.target.value)} className="w-full text-sm rounded-lg px-2 py-1.5 border border-slate-200 mt-2" />
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-slate-500">Move to</span>
+                            <select value={t.day} onChange={(e) => editTask(t.id, "day", e.target.value)} className="text-sm rounded-md border border-slate-200 px-2 py-1.5 bg-white flex-1">
+                              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <button onClick={() => removeTask(t.id)} className="text-xs text-red-500">Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addTask(day)} className="w-full text-sm text-emerald-700 font-medium py-2.5 border-t border-slate-100">+ Add task</button>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <Card className="mt-5 overflow-hidden">
+          <button onClick={() => setShowBackup((s) => !s)} className="w-full px-4 py-3 flex items-center justify-between text-left">
+            <span className="font-semibold text-slate-900">Back up / move to another device</span>
+            <span className="text-slate-400 text-sm">{showBackup ? "hide" : "show"}</span>
+          </button>
+          {showBackup && (
+            <div className="px-4 pb-4">
+              <p className="text-xs text-slate-500 mb-2">This page saves automatically on whatever device you're using. To keep a spare copy — or to move your plan from your phone to your laptop — copy the text below, then paste it into the box on the other device and tap Load.</p>
+              <div className="text-xs font-semibold text-slate-600 mb-1">1. Your plan (copy this)</div>
+              <textarea ref={exportRef} readOnly value={JSON.stringify(S)} className="w-full h-24 text-xs rounded-lg border border-slate-200 p-2 bg-slate-50 font-mono" />
+              <button onClick={doCopy} className="mt-1 text-sm bg-emerald-600 text-white rounded-lg px-3 py-1.5 font-medium">{copied ? "Copied ✓" : "Copy"}</button>
+              <div className="text-xs font-semibold text-slate-600 mb-1 mt-4">2. Restore (paste here, then Load)</div>
+              <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste your saved plan text here…" className="w-full h-24 text-xs rounded-lg border border-slate-200 p-2 font-mono" />
+              <div className="flex items-center gap-2 mt-1">
+                <button onClick={doImport} className="text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 font-medium">Load</button>
+                {importMsg && <span className="text-xs text-slate-600">{importMsg}</span>}
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <div className="mt-3 text-center text-xs">
+          <span className={saveStatus === "error" ? "text-amber-600" : "text-slate-400"}>{saveStatus === "saved" ? "Saved automatically on this device" : "Couldn't save — use Back up above to keep a copy"}</span>
+        </div>
+        <div className="mt-2 text-center">
+          <button onClick={() => { if (confirm("Reset everything to defaults? This clears your edits.")) setS(DEFAULTS); }} className="text-xs text-slate-400 underline">Reset plan</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PartyHub />);
+
+</script>
+</body>
+</html>
