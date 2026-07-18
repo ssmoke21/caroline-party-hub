@@ -321,4 +321,188 @@ function PartyHub() {
                 <div key={name} className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
                   <div><div className="font-medium text-slate-900">{name}</div><div className="text-xs text-slate-500">Need: {need} {unit}</div></div>
                   <div className="font-semibold text-emerald-700 text-sm text-right">{buy}</div>
-  
+                </div>
+              ))}
+            </Card>
+          </div>
+        )}
+
+        {S.tab === "supplies" && (
+          <div className="mt-2 space-y-3">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {[["all", "All"], ["BUY", "To buy"], ["BORROW", "Someone brings"], ["RENT", "Rent"], ["OPEN", "Not sorted"]].map(([f, lbl]) => (
+                <button key={f} onClick={() => setFilter(f)} className={`text-sm px-3 py-1.5 rounded-full whitespace-nowrap font-medium ${filter === f ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"}`}>{lbl}</button>
+              ))}
+            </div>
+            {GROUP_ORDER.map((g) => {
+              const items = S.supplies.filter((it) => it.group === g && matchFilter(it));
+              if (items.length === 0) return null;
+              return (
+                <Card key={g} className="overflow-hidden">
+                  <div className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{g}</div>
+                  {items.map((it) => {
+                    const alloc = allocated(it);
+                    const short = it.need - alloc;
+                    const isOpen = expanded[it.id];
+                    return (
+                      <div key={it.id} className="border-t border-slate-100">
+                        <div className="flex items-center gap-3 px-4 py-2.5">
+                          <Check done={!!it.done} onToggle={() => setSupplyField(it.id, "done", !it.done)} />
+                          <div className="flex-1 min-w-0" onClick={() => !it.qtyKey && toggleExp(it.id)}>
+                            <div className={`text-sm ${it.done ? "line-through text-slate-400" : "text-slate-900"}`}>{it.label}</div>
+                            {it.qtyKey ? (
+                              <div className="text-xs text-emerald-700 font-semibold">{buyLabel(it.qtyKey)}</div>
+                            ) : (
+                              <div className="text-xs text-slate-500">Need {it.need} · {it.sources.length === 0 ? "not sorted yet" : it.sources.map((s, i) => (<span key={i}>{i > 0 ? " · " : ""}{s.qty} {TYPE_LABEL[s.type]}{s.person ? ` (${s.person})` : ""}</span>))}</div>
+                            )}
+                          </div>
+                          {!it.qtyKey && (<span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${short > 0 ? "bg-amber-100 text-amber-700" : short < 0 ? "bg-slate-100 text-slate-500" : "bg-emerald-100 text-emerald-700"}`}>{short > 0 ? `${short} to sort` : short < 0 ? `+${-short}` : "set"}</span>)}
+                        </div>
+                        {isOpen && !it.qtyKey && (
+                          <div className="px-4 pb-4 bg-slate-50">
+                            <label className="text-xs text-slate-500">Item name</label>
+                            <input value={it.label} onChange={(e) => setSupplyField(it.id, "label", e.target.value)} className="w-full text-sm rounded-lg px-2 py-1.5 border border-slate-200 mb-2 mt-0.5" />
+                            <Stepper label="How many needed" value={it.need} onChange={(v) => setSupplyField(it.id, "need", v)} min={0} max={500} />
+                            <div className="text-xs text-slate-500 mt-2 mb-1">Where they come from</div>
+                            <div className="space-y-2">
+                              {it.sources.map((s, idx) => (
+                                <div key={idx} className="bg-white rounded-lg border border-slate-200 p-2">
+                                  <div className="flex items-center gap-2">
+                                    <select value={s.type} onChange={(e) => setSource(it.id, idx, "type", e.target.value)} className="text-sm rounded-md border border-slate-200 px-2 py-1.5 bg-white">
+                                      {TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                                    </select>
+                                    <Stepper value={s.qty} onChange={(v) => setSource(it.id, idx, "qty", v)} min={0} max={500} small />
+                                    <button onClick={() => removeSource(it.id, idx)} className="ml-auto w-8 h-8 rounded-full text-slate-400 hover:text-red-500">×</button>
+                                  </div>
+                                  {needsPerson(s.type) && (<input value={s.person} placeholder={s.type === "RENT" ? "vendor…" : "who's bringing it…"} onChange={(e) => setSource(it.id, idx, "person", e.target.value)} className="mt-2 w-full text-sm rounded-md px-2 py-1.5 border border-sky-200 bg-sky-50" />)}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center justify-between mt-2">
+                              <button onClick={() => addSource(it.id)} className="text-sm text-emerald-700 font-medium">+ Add a source</button>
+                              <span className={`text-xs ${short === 0 ? "text-emerald-700" : "text-amber-600"}`}>{alloc} of {it.need} covered</span>
+                            </div>
+                            <div className="flex justify-between mt-3">
+                              <button onClick={() => removeSupply(it.id)} className="text-xs text-red-500">Delete item</button>
+                              <button onClick={() => toggleExp(it.id)} className="text-xs text-slate-500">Done</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {filter === "all" && (<button onClick={() => addSupply(g)} className="w-full text-sm text-emerald-700 font-medium py-2.5 border-t border-slate-100">+ Add item</button>)}
+                </Card>
+              );
+            })}
+            <p className="text-xs text-slate-400 px-1">Tap any item to change how many you need and split it across our own / buy / borrow / rent — and assign who's bringing each part right there.</p>
+          </div>
+        )}
+
+        {S.tab === "people" && (
+          <div className="mt-2 space-y-3">
+            <p className="text-xs text-slate-500 px-1">Built from your Supplies assignments. Assign people over in Supplies and they show up here, grouped so you know what to ask each person for.</p>
+            {Object.keys(byPerson).length === 0 && (<Card className="p-4 text-sm text-slate-500">No one assigned yet. In Supplies, set an item's source to “Someone brings” or “Rent” and add a name.</Card>)}
+            {Object.keys(byPerson).sort().map((person) => (
+              <Card key={person} className="overflow-hidden">
+                <div className="px-4 pt-3 pb-2 font-semibold text-slate-900 flex items-center justify-between"><span>{person}</span><span className="text-xs font-normal text-slate-400">{byPerson[person].length} item{byPerson[person].length > 1 ? "s" : ""}</span></div>
+                {byPerson[person].map((x, i) => (
+                  <div key={i} className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-sm"><span className="text-slate-800">{x.label}</span><span className="text-slate-500 tabular-nums">×{x.qty}{x.type === "RENT" ? " (rental)" : ""}</span></div>
+                ))}
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {S.tab === "schedule" && (
+          <div className="mt-2 space-y-3">
+            {DAYS.map((day) => {
+              const dayTasks = S.tasks.filter((t) => t.day === day);
+              return (
+                <Card key={day} className="overflow-hidden">
+                  <div className="px-4 pt-3 pb-1 text-sm font-semibold text-slate-900">{day}</div>
+                  {dayTasks.map((t) => (
+                    <div key={t.id} className="border-t border-slate-100">
+                      <div className="flex items-center gap-3 px-4 py-2.5">
+                        <Check done={t.done} onToggle={() => editTask(t.id, "done", !t.done)} />
+                        <span className={`text-sm flex-1 ${t.done ? "line-through text-slate-400" : "text-slate-900"}`} onClick={() => toggleExp(t.id)}>{t.label}</span>
+                        <button onClick={() => toggleExp(t.id)} className="text-xs text-slate-400">edit</button>
+                      </div>
+                      {expanded[t.id] && (
+                        <div className="px-4 pb-3 bg-slate-50">
+                          <input value={t.label} onChange={(e) => editTask(t.id, "label", e.target.value)} className="w-full text-sm rounded-lg px-2 py-1.5 border border-slate-200 mt-2" />
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-slate-500">Move to</span>
+                            <select value={t.day} onChange={(e) => editTask(t.id, "day", e.target.value)} className="text-sm rounded-md border border-slate-200 px-2 py-1.5 bg-white flex-1">
+                              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <button onClick={() => removeTask(t.id)} className="text-xs text-red-500">Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => addTask(day)} className="w-full text-sm text-emerald-700 font-medium py-2.5 border-t border-slate-100">+ Add task</button>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {S.tab === "notes" && (
+          <div className="mt-2 space-y-3">
+            <p className="text-xs text-slate-500 px-1">Recap from last year, plus anything else worth remembering for next time.</p>
+            <Card className="overflow-hidden">
+              <div className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Last year's recap</div>
+              {S.notes.recap.map((n) => (
+                <div key={n.id} className="flex items-start gap-2 px-4 py-2.5 border-t border-slate-100">
+                  <textarea value={n.text} onChange={(e) => editNote(n.id, e.target.value)} rows={2} className="flex-1 text-sm rounded-lg px-2 py-1.5 border border-slate-200 resize-none" />
+                  <button onClick={() => removeNote(n.id)} className="w-8 h-8 rounded-full text-slate-400 hover:text-red-500 shrink-0">×</button>
+                </div>
+              ))}
+              <button onClick={addNote} className="w-full text-sm text-emerald-700 font-medium py-2.5 border-t border-slate-100">+ Add note</button>
+            </Card>
+            <Card className="p-4">
+              <h2 className="font-semibold text-slate-900 mb-1">Freeform notes</h2>
+              <textarea value={S.notes.freeform} onChange={(e) => setFreeform(e.target.value)} placeholder="Anything else to remember for next time…" className="w-full h-32 text-sm rounded-lg border border-slate-200 p-2" />
+            </Card>
+          </div>
+        )}
+
+        <Card className="mt-5 overflow-hidden">
+          <button onClick={() => setShowBackup((s) => !s)} className="w-full px-4 py-3 flex items-center justify-between text-left">
+            <span className="font-semibold text-slate-900">Back up / move to another device</span>
+            <span className="text-slate-400 text-sm">{showBackup ? "hide" : "show"}</span>
+          </button>
+          {showBackup && (
+            <div className="px-4 pb-4">
+              <p className="text-xs text-slate-500 mb-2">This page saves automatically on whatever device you're using. To keep a spare copy — or to move your plan from your phone to your laptop — copy the text below, then paste it into the box on the other device and tap Load.</p>
+              <div className="text-xs font-semibold text-slate-600 mb-1">1. Your plan (copy this)</div>
+              <textarea ref={exportRef} readOnly value={JSON.stringify(S)} className="w-full h-24 text-xs rounded-lg border border-slate-200 p-2 bg-slate-50 font-mono" />
+              <button onClick={doCopy} className="mt-1 text-sm bg-emerald-600 text-white rounded-lg px-3 py-1.5 font-medium">{copied ? "Copied ✓" : "Copy"}</button>
+              <div className="text-xs font-semibold text-slate-600 mb-1 mt-4">2. Restore (paste here, then Load)</div>
+              <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste your saved plan text here…" className="w-full h-24 text-xs rounded-lg border border-slate-200 p-2 font-mono" />
+              <div className="flex items-center gap-2 mt-1">
+                <button onClick={doImport} className="text-sm bg-slate-900 text-white rounded-lg px-3 py-1.5 font-medium">Load</button>
+                {importMsg && <span className="text-xs text-slate-600">{importMsg}</span>}
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <div className="mt-3 text-center text-xs">
+          <span className={saveStatus === "error" ? "text-amber-600" : "text-slate-400"}>{saveStatus === "saved" ? "Saved automatically on this device" : "Couldn't save — use Back up above to keep a copy"}</span>
+        </div>
+        <div className="mt-2 text-center">
+          <button onClick={() => { if (confirm("Reset everything to defaults? This clears your edits.")) setS(DEFAULTS); }} className="text-xs text-slate-400 underline">Reset plan</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<PartyHub />);
+
+</script>
+</body>
+</html>
